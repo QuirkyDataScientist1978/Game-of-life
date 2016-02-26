@@ -1,3 +1,4 @@
+#!/usr/bin/python
 """Game of life demonstration of parallel computing
 
    Copyright (C) 2016  CSC - IT Center for Science Ltd.
@@ -20,12 +21,12 @@ import os
 from optparse import OptionParser
 # import matplotlib as mpl
 # mpl.use('Agg')
-import pylab as pl
 from mpi4py import MPI
+
 
 parser = OptionParser(usage='%prog [options]',
                       version='%prog 1.00')
-parser.add_option('-d', '--dimension', type='int', default=32,
+parser.add_option('-d', '--dimension', type='int', default=60,
                   help='Size of the board')
 parser.add_option('-s', '--shape', type='string', default='cross',
                   help='Initial shape of the board')
@@ -75,6 +76,10 @@ comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 nprocs = comm.Get_size()
 
+#only rank 0 needs pylab
+if rank == 0:
+    import pylab as pl
+
 loc_dim = opt.dimension / nprocs
 assert loc_dim * nprocs == opt.dimension
 loc_board = np.zeros((loc_dim+2, opt.dimension), int) # need ghost layer
@@ -89,6 +94,7 @@ if down < 0:
 up = rank + 1
 if up > nprocs-1:
     up = MPI.PROC_NULL
+
 
 if rank == 0:
     pl.ion()
