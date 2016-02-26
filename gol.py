@@ -30,8 +30,10 @@ parser.add_option('-d', '--dimension', type='int', default=60,
                   help='Size of the board')
 parser.add_option('-s', '--shape', type='string', default='cross',
                   help='Initial shape of the board')
-parser.add_option('-n', '--niter', type='int', default=50,
+parser.add_option('-n', '--niter', type='int', default=500,
                   help='Number of iterations')
+parser.add_option('-c', '--cmap', type='string', default="jet",
+                  help='Colormap')
 
 def initialize(size, shape='cross'):
     if shape == 'random':
@@ -47,6 +49,27 @@ def initialize(size, shape='cross'):
     board[0,:] = board[-1,:]
     board[:,0] = board[:,-1]
     return board
+
+
+def set_blink_color(rank, nprocs, colormap_name):
+    #set blinks to correct value (same as color in board)
+    if rank == 0:
+        #rank 0 computes RGB value
+        scalar_map = mpl.cm.ScalarMappable(norm = mpl.colors.Normalize(0, nprocs), cmap = plt.get_cmap(colormap_name) )
+        #color for value 0 reserved for background
+        rank_colors = np.array([scalar_map.to_rgba(i) for i in range(1, nprocs + 1)])
+    else:
+        rank_colors = None
+
+    rank_color = np.zeros(4)
+
+    comm.Scatter(rank_colors, rank_color)
+    RGB_color = "%d,%d,%d" % ( int(rank_color[0] * 255 ), int(rank_color[1] * 255 ), int(rank_color[2] * 255 ))
+    print rank," has RGB color ", RGB_color
+    blink_command = "/usr/sbin/blink1-tool --rgb=%s -m 1000" % (RGB_color)
+
+    os.popen(blink_command)
+
 
 def update(board):
     # number of neighbours that each square has
@@ -76,9 +99,17 @@ comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 nprocs = comm.Get_size()
 
-#only rank 0 needs pylab
+
+#only rank 0 needs pylab (and it is not installed elsewhere...)
 if rank == 0:
     import pylab as pl
+    import matplotlib as mpl
+    import matplotlib.pyplot as plt
+    from matplotlib import cm
+    pl.ion()
+    pl.hold(False)
+
+set_blink_color(rank, nprocs, opt.cmap)
 
 loc_dim = opt.dimension / nprocs
 assert loc_dim * nprocs == opt.dimension
@@ -96,9 +127,8 @@ if up > nprocs-1:
     up = MPI.PROC_NULL
 
 
-if rank == 0:
-    pl.ion()
-    pl.hold(False)
+
+
 #    pl.imshow(board, cmap = pl.cm.prism)
 
 for iter in range(50):
@@ -122,12 +152,12 @@ for iter in range(50):
     # plot_board = np.where(loc_board[1:-1,:] == 0, -rank*5, 5*loc_board[1:-1,:])
     # or
     # color the ones on the basis of ranks
-    plot_board = np.where(loc_board[1:-1,:] == 1, -(rank+1)*5, 5*loc_board[1:-1,:])
+    plot_board = np.where(loc_board[1:-1,:] == 1, (rank+1) , 0)
 
 
     comm.Gather(plot_board, board)
     if rank == 0:
-        pl.imshow(board, interpolation="nearest") #, cmap = pl.cm.prism)
+        pl.imshow(board, interpolation="nearest",  cmap = opt.cmap )
         pl.draw()
         # pl.savefig('game_{0:03d}.png'.format(iter))
 
