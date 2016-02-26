@@ -127,7 +127,7 @@ for iter in range(50):
 
     comm.Gather(plot_board, board)
     if rank == 0:
-        pl.imshow(board) #, cmap = pl.cm.prism)
+        pl.imshow(board, interpolation="nearest") #, cmap = pl.cm.prism)
         pl.draw()
         # pl.savefig('game_{0:03d}.png'.format(iter))
 
