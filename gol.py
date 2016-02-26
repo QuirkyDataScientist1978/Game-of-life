@@ -64,7 +64,6 @@ def set_blink_color(rank, nprocs, colormap_name):
         rank_colors = None
 
     rank_color = np.zeros(4)
-
     comm.Scatter(rank_colors, rank_color)
     RGB_color = "%d,%d,%d" % ( int(rank_color[0] * 255 ), int(rank_color[1] * 255 ), int(rank_color[2] * 255 ))
     print rank," has RGB color ", RGB_color
@@ -74,22 +73,25 @@ def set_blink_color(rank, nprocs, colormap_name):
 
 
 def update(board):
-    # number of neighbours that each square has
+    # compute number of neighbours that each square has
     neighbours = np.zeros(board.shape)
-    neighbours[1:, 1:] += board[:-1, :-1]
-    neighbours[1:, :-1] += board[:-1, 1:]
-    neighbours[:-1, 1:] += board[1:, :-1]
-    neighbours[:-1, :-1] += board[1:, 1:]
-    neighbours[:-1, :] += board[1:, :]
-    neighbours[1:, :] += board[:-1, :]
-    neighbours[:, :-1] += board[:, 1:]
-    neighbours[:, 1:] += board[:, :-1]
+    #face neighbors
+    neighbours += np.roll(board, 1, axis=0)
+    neighbours += np.roll(board,-1, axis=0)
+    neighbours += np.roll(board, 1, axis=1)
+    neighbours += np.roll(board,-1, axis=1)
+    #corners
+    neighbours += np.roll(np.roll(board,  1, axis=0),  1, axis=1)
+    neighbours += np.roll(np.roll(board,  1, axis=0), -1, axis=1)
+    neighbours += np.roll(np.roll(board, -1, axis=0),  1, axis=1)
+    neighbours += np.roll(np.roll(board, -1, axis=0), -1, axis=1)
 
-    new_board = np.where(neighbours < 2, 0, board)
-    new_board = np.where(neighbours > 3, 0, new_board)
-    new_board = np.where(neighbours == 3, 1, new_board)
-
-    return new_board
+    #die if less than 2 or more than 3 neighbours
+    board = np.where(neighbours < 2, 0, board)
+    board = np.where(neighbours > 3, 0, board)
+    #new life if 3 neighbors
+    board = np.where(neighbours == 3, 1, board)
+    return board
 
 
 # initialize global board
@@ -101,11 +103,12 @@ rank = comm.Get_rank()
 nprocs = comm.Get_size()
 # find neighbouring processes
 down = rank - 1
-if down < 0:
-    down = MPI.PROC_NULL
 up = rank + 1
+#periodic boundaries
+if down < 0:
+    down = nprocs -1 
 if up > nprocs-1:
-    up = MPI.PROC_NULL
+    up = 0
 
 
 #only rank 0 needs pylab (and it is not installed elsewhere...)
@@ -115,7 +118,7 @@ if rank == 0:
     import matplotlib.pyplot as plt
     from matplotlib import cm
     pl.ion()
-    pl.figure(figsize = (15,15))
+    pl.figure(figsize = (12,12))
     pl.hold(False)
 
 #set color of blinks to be the same we use for tile colors
