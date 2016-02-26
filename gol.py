@@ -92,32 +92,11 @@ def update(board):
 
 # initialize global board
 opt, args = parser.parse_args()
-board = initialize(opt.dimension, opt.shape)
 
 # determine parallezation parameters
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 nprocs = comm.Get_size()
-
-
-#only rank 0 needs pylab (and it is not installed elsewhere...)
-if rank == 0:
-    import pylab as pl
-    import matplotlib as mpl
-    import matplotlib.pyplot as plt
-    from matplotlib import cm
-    pl.ion()
-    pl.hold(False)
-
-set_blink_color(rank, nprocs, opt.cmap)
-
-loc_dim = opt.dimension / nprocs
-assert loc_dim * nprocs == opt.dimension
-loc_board = np.zeros((loc_dim+2, opt.dimension), int) # need ghost layer
-
-# Distribute initial board
-comm.Scatter(board, loc_board[1:-1,:])
-
 # find neighbouring processes
 down = rank - 1
 if down < 0:
@@ -127,13 +106,36 @@ if up > nprocs-1:
     up = MPI.PROC_NULL
 
 
-
-plot_board = np.where(loc_board[1:-1,:] == 0, (rank+1) , 0)
-#plot_board = np.where(loc_board[1:-1,:] == 1, (rank+1) , 0)
-comm.Gather(plot_board, board)
-if rank==0:
+#only rank 0 needs pylab (and it is not installed elsewhere...)
+if rank == 0:
+    import pylab as pl
+    import matplotlib as mpl
+    import matplotlib.pyplot as plt
+    from matplotlib import cm
+    pl.ion()
     pl.figure(figsize = (15,15))
-    p = pl.imshow(board, interpolation="nearest",  cmap = opt.cmap )
+    pl.hold(False)
+
+#set color of blinks to be the same we use for tile colors
+set_blink_color(rank, nprocs, opt.cmap)
+
+#allocate boards 
+loc_dim = opt.dimension / nprocs
+assert loc_dim * nprocs == opt.dimension
+board = initialize(opt.dimension, opt.shape)
+loc_board = np.zeros((loc_dim+2, opt.dimension), int) # need ghost layer
+plot_board = np.zeros((opt.dimension, opt.dimension), int)
+
+# Distribute initial board
+comm.Scatter(board, loc_board[1:-1,:])
+
+#initial plot of the board
+# color the zeros on the basis of ranks
+loc_plot_board = np.where(loc_board[1:-1,:] == 0, (rank+1) , 0)
+# gather board to master and plot there
+comm.Gather(loc_plot_board, plot_board)
+if rank==0:
+    p = pl.imshow(plot_board, interpolation="nearest",  cmap = opt.cmap )
     pl.axis('off')
     pl.draw()
 
@@ -152,23 +154,11 @@ for iter in range(opt.niter):
     # update the board
     loc_board = update(loc_board)
 
-    # gather board to master and plot
-
     # color the zeros on the basis of ranks
-    plot_board = np.where(loc_board[1:-1,:] == 0, (rank+1) , 0)
-    # or
-    # color the ones on the basis of ranks
-    #plot_board = np.where(loc_board[1:-1,:] == 1, (rank+1) , 0)
-    comm.Gather(plot_board, board)
+    loc_plot_board = np.where(loc_board[1:-1,:] == 0, (rank+1) , 0)
+    # gather board to master and plot there
+    comm.Gather(loc_plot_board, plot_board)
     if rank == 0:
-        p.set_data(board)
+        p.set_data(plot_board)
         pl.draw()
 
-        # pl.savefig('game_{0:03d}.png'.format(iter))
-
-# Create animated gif using Imagemagic
-if rank == 0:
-    # os.system('convert game_???.png game.gif')
-    # os.system('rm -fr game_???.png')
-    pl.ioff()
-    pl.show()
