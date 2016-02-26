@@ -32,6 +32,8 @@ parser.add_option('-s', '--shape', type='string', default='cross',
                   help='Initial shape of the board')
 parser.add_option('-n', '--niter', type='int', default=50,
                   help='Number of iterations')
+parser.add_option('-r', '--repeat', type='int', default=1,
+                  help='Number of repeats from new initial state')
 parser.add_option('-c', '--cmap', type='string', default="jet",
                   help='Colormap')
 
@@ -122,10 +124,11 @@ set_blink_color(rank, nprocs, opt.cmap)
 #allocate boards 
 loc_dim = opt.dimension / nprocs
 assert loc_dim * nprocs == opt.dimension
-board = initialize(opt.dimension, opt.shape)
+#allocate space for local board and plot board
 loc_board = np.zeros((loc_dim+2, opt.dimension), int) # need ghost layer
 plot_board = np.zeros((opt.dimension, opt.dimension), int)
-
+#init board
+board = initialize(opt.dimension, opt.shape)
 # Distribute initial board
 comm.Scatter(board, loc_board[1:-1,:])
 
@@ -139,26 +142,33 @@ if rank==0:
     pl.axis('off')
     pl.draw()
 
-for iter in range(opt.niter):
-    # send up, receive from down
-    sbuf = loc_board[-2,:]
-    rbuf = loc_board[0,:]
-    comm.Sendrecv(sbuf, dest=up, 
-                 recvbuf=rbuf, source=down)
-    # send down, receive from up
-    sbuf = loc_board[1,:]
-    rbuf = loc_board[-1,:]
-    comm.Sendrecv(sbuf, dest=down, 
-                 recvbuf=rbuf, source=up)
+for r in range(opt.repeat):
+    for iter in range(opt.niter):
+        # send up, receive from down
+        sbuf = loc_board[-2,:]
+        rbuf = loc_board[0,:]
+        comm.Sendrecv(sbuf, dest=up, 
+                      recvbuf=rbuf, source=down)
+        # send down, receive from up
+        sbuf = loc_board[1,:]
+        rbuf = loc_board[-1,:]
+        comm.Sendrecv(sbuf, dest=down, 
+                      recvbuf=rbuf, source=up)
 
-    # update the board
-    loc_board = update(loc_board)
+        # update the board
+        loc_board = update(loc_board)
 
-    # color the zeros on the basis of ranks
-    loc_plot_board = np.where(loc_board[1:-1,:] == 0, (rank+1) , 0)
-    # gather board to master and plot there
-    comm.Gather(loc_plot_board, plot_board)
-    if rank == 0:
-        p.set_data(plot_board)
-        pl.draw()
+        # color the zeros on the basis of ranks
+        loc_plot_board = np.where(loc_board[1:-1,:] == 0, (rank+1) , 0)
+        # gather board to master and plot there
+        comm.Gather(loc_plot_board, plot_board)
+        if rank == 0:
+            p.set_data(plot_board)
+            pl.draw()
+
+    #re-init board
+    board = initialize(opt.dimension, opt.shape)
+    # Distribute initial board
+    comm.Scatter(board, loc_board[1:-1,:])
+
 
