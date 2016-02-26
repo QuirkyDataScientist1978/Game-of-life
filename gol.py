@@ -26,11 +26,11 @@ from mpi4py import MPI
 
 parser = OptionParser(usage='%prog [options]',
                       version='%prog 1.00')
-parser.add_option('-d', '--dimension', type='int', default=60,
+parser.add_option('-d', '--dimension', type='int', default=300,
                   help='Size of the board')
 parser.add_option('-s', '--shape', type='string', default='cross',
                   help='Initial shape of the board')
-parser.add_option('-n', '--niter', type='int', default=500,
+parser.add_option('-n', '--niter', type='int', default=50,
                   help='Number of iterations')
 parser.add_option('-c', '--cmap', type='string', default="jet",
                   help='Colormap')
@@ -128,10 +128,16 @@ if up > nprocs-1:
 
 
 
+plot_board = np.where(loc_board[1:-1,:] == 0, (rank+1) , 0)
+#plot_board = np.where(loc_board[1:-1,:] == 1, (rank+1) , 0)
+comm.Gather(plot_board, board)
+if rank==0:
+    pl.figure(figsize = (15,15))
+    p = pl.imshow(board, interpolation="nearest",  cmap = opt.cmap )
+    pl.axis('off')
+    pl.draw()
 
-#    pl.imshow(board, cmap = pl.cm.prism)
-
-for iter in range(50):
+for iter in range(opt.niter):
     # send up, receive from down
     sbuf = loc_board[-2,:]
     rbuf = loc_board[0,:]
@@ -149,16 +155,15 @@ for iter in range(50):
     # gather board to master and plot
 
     # color the zeros on the basis of ranks
-    # plot_board = np.where(loc_board[1:-1,:] == 0, -rank*5, 5*loc_board[1:-1,:])
+    plot_board = np.where(loc_board[1:-1,:] == 0, (rank+1) , 0)
     # or
     # color the ones on the basis of ranks
-    plot_board = np.where(loc_board[1:-1,:] == 1, (rank+1) , 0)
-
-
+    #plot_board = np.where(loc_board[1:-1,:] == 1, (rank+1) , 0)
     comm.Gather(plot_board, board)
     if rank == 0:
-        pl.imshow(board, interpolation="nearest",  cmap = opt.cmap )
+        p.set_data(board)
         pl.draw()
+
         # pl.savefig('game_{0:03d}.png'.format(iter))
 
 # Create animated gif using Imagemagic
