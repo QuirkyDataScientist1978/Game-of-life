@@ -18,6 +18,8 @@
 
 import numpy as np
 import os
+import time
+import sys
 from optparse import OptionParser
 # import matplotlib as mpl
 # mpl.use('Agg')
@@ -66,7 +68,7 @@ def set_blink_color(rank, nprocs, colormap_name):
     rank_color = np.zeros(4)
     comm.Scatter(rank_colors, rank_color)
     RGB_color = "%d,%d,%d" % ( int(rank_color[0] * 255 ), int(rank_color[1] * 255 ), int(rank_color[2] * 255 ))
-    print rank," has RGB color ", RGB_color
+#    print rank," has RGB color ", RGB_color
     blink_command = "/usr/sbin/blink1-tool --rgb=%s -m 1000" % (RGB_color)
 
     os.popen(blink_command)
@@ -92,6 +94,8 @@ def update(board):
     #new life if 3 neighbors
     board = np.where(neighbours == 3, 1, board)
     return board
+
+
 
 
 # initialize global board
@@ -124,16 +128,17 @@ if rank == 0:
 #set color of blinks to be the same we use for tile colors
 set_blink_color(rank, nprocs, opt.cmap)
 
-#allocate boards 
+#init board
+board = initialize(opt.dimension, opt.shape)
+#set domain decomposition parameters
 loc_dim = opt.dimension / nprocs
 assert loc_dim * nprocs == opt.dimension
 #allocate space for local board and plot board
 loc_board = np.zeros((loc_dim+2, opt.dimension), int) # need ghost layer
 plot_board = np.zeros((opt.dimension, opt.dimension), int)
-#init board
-board = initialize(opt.dimension, opt.shape)
 # Distribute initial board
 comm.Scatter(board, loc_board[1:-1,:])
+
 
 #initial plot of the board
 # color the zeros on the basis of ranks
@@ -147,6 +152,9 @@ if rank==0:
 
 for r in range(opt.repeat):
     for iter in range(opt.niter):
+        if(iter % 100 == 0 ):
+            start_time = time.clock()
+
         # send up, receive from down
         sbuf = loc_board[-2,:]
         rbuf = loc_board[0,:]
@@ -167,7 +175,12 @@ for r in range(opt.repeat):
         comm.Gather(loc_plot_board, plot_board)
         if rank == 0:
             p.set_data(plot_board)
+            if(iter % 100 == 99 ):
+                end_time = time.clock()
+                pl.title("Performance on %d nodes is %.2f million updates/s, measured %g updates in %f s" % (nprocs, 1e-6 * (opt.dimension * opt.dimension * 100)/(end_time - start_time), opt.dimension * opt.dimension * 100, end_time - start_time))
             pl.draw()
+
+
 
     #re-init board
     board = initialize(opt.dimension, opt.shape)
